@@ -1,0 +1,16 @@
+name: ev
+channels:
+  - defaults
+  - conda-forge
+dependencies:
+  - pandas
+  - matplotlib
+  - scikit-learn
+  - scipy
+  - numpy
+  - python=3.7
+  - pvlib
+  - pyomo
+  - glpk
+  - ipopt
+  - pip
