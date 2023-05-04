@@ -13,4 +13,6 @@ dependencies:
   - pyomo
   - glpk
   - ipopt
+  - jupyter
+  - ipykernel
   - pip
