@@ -54,7 +54,7 @@ if __name__ == "__main__":
     base_url = 'https://pad.human.cornell.edu/counties/expprojdata.cfm?'
 
     # Create a list of urls to download
-    urls = [f'{base_url}+county={id}' for id in range(1, 125, 2)]
+    urls = [f'{base_url}county={id}' for id in range(1, 125, 2)]
 
     start_time = time.time()
     download_all_sites(urls)
