@@ -5,6 +5,7 @@ errors.*
 nrel_api_key.txt
 NYSERDA_Data/
 Figures/
+Population_Data/
 
 # Byte-compiled / optimized / DLL files
 __pycache__/
