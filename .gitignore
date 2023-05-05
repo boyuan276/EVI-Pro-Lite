@@ -3,7 +3,8 @@ OutputData/
 logs.*
 errors.*
 nrel_api_key.txt
-NYSERDA_Data
+NYSERDA_Data/
+Figures/
 
 # Byte-compiled / optimized / DLL files
 __pycache__/
