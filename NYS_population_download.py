@@ -4,10 +4,7 @@
 import os
 import sys
 import time
-import numpy as np
-import pandas as pd
 import requests
-import urllib3
 import logging
 import concurrent.futures
 import threading
@@ -27,7 +24,7 @@ def download_site(url):
     session = get_session()
     with session.get(url) as response:
         # Write the result to a file
-        with open(os.path.join(data_dir, f"{url.split('=')[-1]}.csv"), 'wb') as f:
+        with open(os.path.join(data_dir, f"{url.split('=')[-1]}.xlsx"), 'wb') as f:
             f.write(response.content)
 
 def download_all_sites(sites):
