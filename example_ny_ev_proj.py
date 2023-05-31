@@ -40,7 +40,7 @@ def county_run(temp_csv, scenario_csv, api_key):
     temp_csv.drop('temperature',axis = 1,inplace=True)
 
     # Run the model
-    final_result = temp_run(scenario_csv,temp_csv,api_key)
+    final_result = temp_run(scenario_csv, temp_csv, api_key)
     
     return final_result
 
@@ -51,6 +51,7 @@ if __name__ == '__main__':
     start = time.time()
     logging.basicConfig(level=logging.INFO, stream=sys.stdout,
                         format='%(asctime)s - %(levelname)s - %(message)s')
+    logging.captureWarnings(True)
 
     # %% Set up directories
 
@@ -77,20 +78,26 @@ if __name__ == '__main__':
     # %% Set up API key
 
     api_key_file = 'nrel_api_key.txt'
+    api_key_list = list()
 
     if os.path.isfile(api_key_file):
         # Read API key from file
         with open(api_key_file, 'r') as f:
-            api_key = f.read()
-            logging.info('API key found in file.')
+            # Read each line
+            for line in f:
+                # Check if API key is valid
+                if line.strip() and len(line.strip()) == 40:
+                    api_key_list.append(line.strip())
+                else:
+                    logging.warning(f'Invalid API key: {line.strip()}') 
+        if len(api_key_list) > 0:
+            logging.info(f'{len(api_key_list)} API keys found in file.')
+        else:
+            logging.warning('No valid API key found in file. Please enter your API key below.')
+            api_key = input('Enter API key: ')
     else:
         logging.warning('API key not found in file. Please enter your API key below.')
         api_key = input('Enter API key: ')
-
-    # Check if API key is valid
-    if len(api_key) != 40:
-        logging.warning('API key is not valid. Use the demo key instead.')
-        api_key = 'DEMO_KEY'
 
     # %% Read vehicle count data
 
@@ -120,7 +127,7 @@ if __name__ == '__main__':
     temp_df_daily = temp_df.resample('D').mean()
 
     # Only run for the first 10 days
-    temp_df_daily = temp_df_daily.iloc[:10]
+    # temp_df_daily = temp_df_daily.iloc[:30]
 
     # %% Run the model
 
@@ -137,6 +144,7 @@ if __name__ == '__main__':
             # Get daily average temperature for the county
             temp_csv = pd.DataFrame(temp_df_daily[county]).reset_index()
             temp_csv.columns = ['date', 'temperature']
+            temp_csv['date'] = pd.to_datetime(temp_csv['date'])
             temp_csv_list.append(temp_csv)
 
             # Get scenario data for the county
@@ -166,6 +174,17 @@ if __name__ == '__main__':
 
     # Set up a thread pool with 10 threads
     with ThreadPoolExecutor(max_workers=10) as executor:
+        
+        futures = list()
+        for i, (temp_csv, scenario_csv) in enumerate(zip(temp_csv_list, scenario_csv_list)):
+            
+            # Switch to the next API key every 10 tasks
+            api_key_index = i // 10  
+            api_key = api_key_list[api_key_index]
+            
+            # Submit the task to the executor with the assigned API key
+            futures.append(executor.submit(county_run, temp_csv, scenario_csv, api_key))
+
         futures = [executor.submit(county_run, temp_csv, scenario_csv, api_key) 
                    for temp_csv, scenario_csv in zip(temp_csv_list, scenario_csv_list)]
         
@@ -184,7 +203,7 @@ if __name__ == '__main__':
                 filename = os.path.join(output_dir, f'{county}_scen{str(scenario)}_temp_gridLoad.csv'.replace(' ','_'))
                 final_result[scenario].to_csv(filename)
 
-            logging.info('Finished running for county: {}'.format(county))
+            logging.info(f'Finished running for county: {county}')
             
     end = time.time()
     logging.info('#############################################')
