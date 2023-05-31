@@ -14,6 +14,7 @@ from requests.packages.urllib3.exceptions import InsecureRequestWarning
 requests.packages.urllib3.disable_warnings(InsecureRequestWarning)
 from datetime import datetime,timedelta
 import os
+import logging
 
 #Input values
 param_dict = {
@@ -44,7 +45,7 @@ def run(scenario_path, temp_path="", api_key = "DEMO_KEY"):
     scenario_csv = pd.read_csv(scenario_path)
     
     if temp_path=="":
-        print("Running API without user-defined temperatures...")
+        logging.info("Running API without user-defined temperatures...")
         final_result = csv_run(scenario_csv,api_key)
         for scenario in final_result.keys():
             dow_dict = {}
@@ -57,7 +58,7 @@ def run(scenario_path, temp_path="", api_key = "DEMO_KEY"):
     #If we have a temperature csv, read it and pass it to function
     else:
         temp_csv= pd.read_csv(temp_path)
-        print("Using input csv for temperatures to run the API...")
+        logging.info("Using input csv for temperatures to run the API...")
         temp_csv['date'] = pd.to_datetime(temp_csv['date'])
         temp_csv['date'] = temp_csv['date'].dt.date
     # Saturday and Sunday are 5 and 6, Monday is 0. <5 is weekday
@@ -79,7 +80,7 @@ def run(scenario_path, temp_path="", api_key = "DEMO_KEY"):
 
 #Applies API_Run to every row in temp_csv. This is only run if using a csv with temperature data
 #Sends in a row based on a single scenario and a set of temperatures (each representing one day or time interval to be averaged)
-def temp_run(scenario_csv,temp_csv,api_key,smoothing=1):
+def temp_run(scenario_csv,temp_csv,api_key,smoothing=1, **kwargs):
     output_dict = {}
     
     for scenario_id, scenario_row in scenario_csv.iterrows(): #Each row here represents a particular scenario defined by the user. row index is used as scenario identifier
@@ -92,7 +93,7 @@ def temp_run(scenario_csv,temp_csv,api_key,smoothing=1):
     #For each day/temperature in the given csv, run the API. 
     #output_dict will have one key per scenario, each corresponding to a df with a row per 15 minute time bucket
         for temp_id,temp_row in temp_df.iterrows():
-            result = API_run(temp_row,api_key,smoothing)
+            result = API_run(temp_row,api_key,smoothing, **kwargs)
             result['date'] = temp_row.date
             result['time'] = result.index
             result['weekday'] = temp_row.weekday
@@ -116,7 +117,7 @@ def temp_run(scenario_csv,temp_csv,api_key,smoothing=1):
                                 output_df.loc[str(prev_date)+" 23:00:00":str(prev_date)+" 23:45:00",charge_type] = slope_array[:4]
                                 result.loc[str(temp_row.date)+" 0:00:00":str(temp_row.date)+" 0:45:00",charge_type] = slope_array[4:]
                     except ArithmeticError:
-                        print("slope_inc: "+str(slope_inc))
+                        logging.warning("slope_inc: "+str(slope_inc))
 #                    
             output_df = output_df.append(result) 
         output_dict[scenario_id] = output_df
@@ -124,7 +125,7 @@ def temp_run(scenario_csv,temp_csv,api_key,smoothing=1):
     return output_dict
 
 #Takes in a csv with one row for each parameter that is going to be run
-def csv_run(input_csv, api_key, smoothing = 1):
+def csv_run(input_csv, api_key, smoothing = 1, **kwargs):
     output_dict = {}
     #output_metadata_dict = {}
     for row_id, row in input_csv.iterrows(): #Each row here represents a particular scenario defined by the user. row_idx is used as scenario identifier
@@ -132,25 +133,27 @@ def csv_run(input_csv, api_key, smoothing = 1):
             if val not in param_dict[list(param_dict)[col_idx]]:#param_series[col_idx]:
                 if col_idx==2: #Find closest temperature rather than throwing an error
                     nearest_temp = find_nearest(param_dict['temp_c'],val)
-                    print("Scenario "+str(row_id)+" temperature: "+str(val))
-                    print("Nearest value: "+str(nearest_temp))
+                    logging.debug("Scenario "+str(row_id)+" temperature: "+str(val))
+                    logging.debug("Nearest value: "+str(nearest_temp))
                     row[col_idx] = nearest_temp
                 else:
-                    print("Invalid input row index "+str(row_id)+", column index "+str(col_idx)+ (": "+param_dict[list(param_dict)[col_idx]]))
+                    logging.warning("Invalid input row index "+str(row_id)+", column index "+str(col_idx)+ (": "+param_dict[list(param_dict)[col_idx]]))
                 break
 
             #Run API_run and append to new series to return with all data
-            output_dict[row_id] = (API_run(row,api_key,smoothing))
+            output_dict[row_id] = (API_run(row,api_key,smoothing, **kwargs))
     return output_dict
 
 
 #This function is called by temp_apply and returns output from the API based on the row sent by temp_apply
-def API_run(df_row, api_key, smoothing):  
+def API_run(df_row, api_key, smoothing, **kwargs): 
+    # Get county name for the run
+    county = kwargs.get('county', 'EMPTY')
     #Assign values for each parameter- must be in order given in documentation
     #if csv_temp parameter is defined, that means it is passed in via csv. Must replace temp_c with that value based on available temps defined for the tool
     if len(df_row)==15:
         date,weekday,temp_c,fleet_size,mean_dvmt,pev_type,pev_dist,class_dist,home_access_dist,home_power_dist,work_power_dist,pref_dist,res_charging,work_charging,scenario_id = df_row
-        print(date)
+        logging.info(f'{date} - {county}')
     else:
         fleet_size,mean_dvmt,temp_c,pev_type,pev_dist,class_dist,home_access_dist,home_power_dist,work_power_dist,pref_dist,res_charging,work_charging = df_row
     temp_c = find_nearest(param_dict["temp_c"],temp_c)
@@ -166,10 +169,10 @@ def API_run(df_row, api_key, smoothing):
     try:
         raw_json['results']
     except KeyError:
-        print("ERROR:"+raw_json['error']['code']+"\n")
+        logging.error("ERROR:"+raw_json['error']['code']+"\n")
         raise
     
-#if day is a weekday, return the weekday load profile for the day, otherwise return weekend
+    #if day is a weekday, return the weekday load profile for the day, otherwise return weekend
     try:
         if weekday<5:
             result = pd.DataFrame(raw_json['results']['weekday_load_profile'])
@@ -202,7 +205,7 @@ def loadPlotting(result,scenario=0,filename = "",week=1):
     else:
         ax.xaxis.set_major_formatter(mdates.DateFormatter("%m-%d\n%H:%M"))
 
-#Only plot the first week of data unless told otherwise
+    #Only plot the first week of data unless told otherwise
         if week==1:
             x_labels = result[scenario].index[0:672]
             ax.stackplot(x_labels,result[scenario][["home_l1","home_l2","work_l1","work_l2","public_l2","public_l3"]][0:672].T)
@@ -271,18 +274,18 @@ def csvPlotting(path,startdate = "",numdays = 7,filename = ""):
     fig = plt.figure(figsize = (figlen,7))
     ax = plt.axes()
 
-#Only plot the first week of data unless told otherwise
+    #Only plot the first week of data unless told otherwise
     if startdate=="":
         x_labels = result.date[0:numdays*96]+ " "+ result.time[0:numdays*96]
         x_labels = [datetime.strptime(x,"%Y-%m-%d %H:%M:%S") for x in x_labels]
         ax.stackplot(x_labels,result[["home_l1","home_l2","work_l1","work_l2","public_l2","public_l3"]][0:numdays*96].T)
     else:
-        print("Assumed startdate in yyyy-mm-dd format...")
+        ("Assumed startdate in yyyy-mm-dd format...")
         try:
             datetime.strptime(startdate,"%Y-%m-%d")
         except:
-            print("Start date in wrong format. Need yyyy-mm-dd")
-#Get index of first entry for start date (at time 00:00)       
+            logging.warning("Start date in wrong format. Need yyyy-mm-dd")
+        #Get index of first entry for start date (at time 00:00)       
         startdate_idx = result[result.date==startdate].index[0]
         enddate_idx = startdate_idx+numdays*96
         x_labels = result.date[startdate_idx:enddate_idx]+ " "+ result.time[startdate_idx:enddate_idx]
