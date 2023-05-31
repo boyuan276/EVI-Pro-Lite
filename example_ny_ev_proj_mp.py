@@ -14,7 +14,7 @@ import time
 import logging
 
 
-def county_run(temp_csv, scenario_csv, api_key):
+def county_run(temp_csv, scenario_csv, api_key, county):
     """
     Run the EVI-Pro Lite model for a county.
 
@@ -33,14 +33,15 @@ def county_run(temp_csv, scenario_csv, api_key):
         15 min EV charging demand.
     """
     
-    temp_csv['date'] = temp_csv['date'].dt.date
+    temp_csv['date'] = pd.to_datetime(temp_csv['date']).dt.date
     # Saturday and Sunday are 5 and 6, Monday is 0. <5 is weekday
     temp_csv['weekday'] = temp_csv['date'].apply(lambda x: x.weekday())#<5)
     temp_csv['temp_c'] = temp_csv['temperature']
     temp_csv.drop('temperature',axis = 1,inplace=True)
 
     # Run the model
-    final_result = temp_run(scenario_csv, temp_csv, api_key)
+    logging.info(f'Running with API key: {api_key}')
+    final_result = temp_run(scenario_csv, temp_csv, api_key, county=county)
     
     return final_result
 
@@ -89,9 +90,10 @@ if __name__ == '__main__':
                 if line.strip() and len(line.strip()) == 40:
                     api_key_list.append(line.strip())
                 else:
-                    logging.warning(f'Invalid API key: {line.strip()}') 
-        if len(api_key_list) > 0:
-            logging.info(f'{len(api_key_list)} API keys found in file.')
+                    logging.warning(f'Invalid API key: {line.strip()}')
+        n_api_key = len(api_key_list)
+        if n_api_key > 0:
+            logging.info(f'{n_api_key} API keys found in file.')
         else:
             logging.warning('No valid API key found in file. Please enter your API key below.')
             api_key = input('Enter API key: ')
@@ -126,84 +128,84 @@ if __name__ == '__main__':
     # Calculate daily average temperature
     temp_df_daily = temp_df.resample('D').mean()
 
-    # Only run for the first 10 days
-    # temp_df_daily = temp_df_daily.iloc[:30]
+    # Loop through the months
+    # NOTE: This is only for reducing computational cost.
+    for m in range(1, 13):
+        temp_df_daily_m = temp_df_daily[temp_df_daily.index.month == m]
 
-    # %% Run the model
+        # %% Run the model
 
-    # Loop through the first three counties
-    # NOTE: This is for demonstration purpose only.
-    #       The full run will take a long time.
-    #       NREL throttles the API calls to 1 call per second.
-    #       A user can make at most 1,000 calls per hour.
-    temp_csv_list = list()
-    scenario_csv_list = list()
+        # Loop through the first three counties
+        # NOTE: NREL throttles the API calls to 1 call per second.
+        #       A user can make at most 1,000 calls per hour.
+        temp_csv_list = list()
+        scenario_csv_list = list()
 
-    for county in county_names:
+        for county in county_names:
 
-            # Get daily average temperature for the county
-            temp_csv = pd.DataFrame(temp_df_daily[county]).reset_index()
-            temp_csv.columns = ['date', 'temperature']
-            temp_csv['date'] = pd.to_datetime(temp_csv['date'])
-            temp_csv_list.append(temp_csv)
+                # Get daily average temperature for the county
+                temp_csv = pd.DataFrame(temp_df_daily_m[county]).reset_index()
+                temp_csv.columns = ['date', 'temperature']
+                # temp_csv['date'] = pd.to_datetime(temp_csv['date'])
+                temp_csv_list.append(temp_csv)
 
-            # Get scenario data for the county
-            fleet_size = vehicle_by_county_proj_year[county]
-            temp_c = temp_csv['temperature'].mean()
+                # Get scenario data for the county
+                fleet_size = vehicle_by_county_proj_year[county]
+                temp_c = temp_csv['temperature'].mean()
 
-            # Example scenario: two PHEV types
-            # User can change the scenario data here
-            scenario_dict = {
-                'fleet_size': [fleet_size]*2,
-                'mean_dvmt': [35]*2,
-                'temp_c': [temp_c]*2,
-                'pev_type': ['PHEV20', 'PHEV50'],
-                'pev_dist': ['EQUAL']*2,
-                'class_dist': ['Equal']*2,
-                'home_access_dist': ['HA75']*2,
-                'home_power_dist': ['MostL1']*2,
-                'work_power_dist': ['MostL2']*2,
-                'pref_dist': ['Home60']*2,
-                'res_charging': ['min_delay']*2,
-                'work_charging': ['min_delay']*2,
-            }
-            scenario_csv = pd.DataFrame(scenario_dict)
-            # Save scenario data to CSV
-            scenario_csv.to_csv(os.path.join(output_dir, f'{county}_scenarios.csv'.replace(' ','_')))
-            scenario_csv_list.append(scenario_csv)
+                # Example scenario: two PHEV types
+                # User can change the scenario data here
+                scenario_dict = {
+                    'fleet_size': [fleet_size]*2,
+                    'mean_dvmt': [35]*2,
+                    'temp_c': [temp_c]*2,
+                    'pev_type': ['PHEV20', 'PHEV50'],
+                    'pev_dist': ['EQUAL']*2,
+                    'class_dist': ['Equal']*2,
+                    'home_access_dist': ['HA75']*2,
+                    'home_power_dist': ['MostL1']*2,
+                    'work_power_dist': ['MostL2']*2,
+                    'pref_dist': ['Home60']*2,
+                    'res_charging': ['min_delay']*2,
+                    'work_charging': ['min_delay']*2,
+                }
+                scenario_csv = pd.DataFrame(scenario_dict)
+                # Save scenario data to CSV
+                scenario_csv.to_csv(os.path.join(output_dir, f'{county}_scenarios.csv'.replace(' ','_')))
+                scenario_csv_list.append(scenario_csv)
 
-    # Set up a thread pool with 10 threads
-    with ThreadPoolExecutor(max_workers=10) as executor:
-        
-        futures = list()
-        for i, (temp_csv, scenario_csv) in enumerate(zip(temp_csv_list, scenario_csv_list)):
+        # Set up a thread pool with 10 threads
+        with ThreadPoolExecutor(max_workers=10) as executor:
             
-            # Switch to the next API key every 10 tasks
-            api_key_index = i // 10  
-            api_key = api_key_list[api_key_index]
+            futures = list()
+            for i, (temp_csv, scenario_csv) in enumerate(zip(temp_csv_list, scenario_csv_list)):
+                
+                # Switch to the next API key for every call
+                api_key_index = i % n_api_key 
+                api_key = api_key_list[api_key_index]
+                
+                # Submit the task to the executor with the assigned API key
+                futures.append(executor.submit(county_run, temp_csv, scenario_csv, api_key, county_names[i]))
             
-            # Submit the task to the executor with the assigned API key
-            futures.append(executor.submit(county_run, temp_csv, scenario_csv, api_key))
+            for i, future in enumerate(as_completed(futures)):
+                final_result = future.result()
 
-        futures = [executor.submit(county_run, temp_csv, scenario_csv, api_key) 
-                   for temp_csv, scenario_csv in zip(temp_csv_list, scenario_csv_list)]
-        
-        for i, future in enumerate(as_completed(futures)):
-            final_result = future.result()
+                # Plotting and Save CSVs with data
+                county = county_names[i]
+                scenario_csv = scenario_csv_list[i]
+                
+                for scenario,row in scenario_csv.iterrows():
+                    # Plot charging demand for the first week
+                    fig_name = os.path.join(fig_dir, f'{county}_month{m}_scen{str(scenario)}_temp_gridLoad.png'.replace(' ','_'))
+                    loadPlotting(final_result, scenario, fig_name)
 
-            # Plotting and Save CSVs with data
-            county = county_names[i]
-            scenario_csv = scenario_csv_list[i]
-            for scenario,row in scenario_csv.iterrows():
-                # Plot charging demand for the first week
-                fig_name = os.path.join(fig_dir, f'{county}_scen{str(scenario)}_temp_gridLoad.png'.replace(' ','_'))
-                loadPlotting(final_result, scenario, fig_name)
+                    # Save charging demand to CSV
+                    filename = os.path.join(output_dir, f'{county}_month{m}_scen{str(scenario)}_temp_gridLoad.csv'.replace(' ','_'))
+                    final_result[scenario].to_csv(filename)
 
-                # Save charging demand to CSV
-                filename = os.path.join(output_dir, f'{county}_scen{str(scenario)}_temp_gridLoad.csv'.replace(' ','_'))
-                final_result[scenario].to_csv(filename)
+                logging.info(f'Finished running for county: {county}')
+        logging.info(f'Finished running the model for month {m}.')
 
-            logging.info(f'Finished running for county: {county}')
             
     end = time.time()
     logging.info('#############################################')
