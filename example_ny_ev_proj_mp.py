@@ -50,7 +50,7 @@ def county_run(temp_csv, scenario_csv, api_key, county):
             logging.warning(f"Set fleet size to 10000 and scale the results by {scaling_factor[scenario]}.")
 
     # Run the model
-    logging.info(f'Running with API key: {api_key}')
+    logging.debug(f'Running with API key: {api_key}')
     final_result = temp_run(scenario_csv, temp_csv, api_key, county=county)
 
     # Scale the results
