@@ -33,15 +33,31 @@ def county_run(temp_csv, scenario_csv, api_key, county):
         15 min EV charging demand.
     """
     
+    # Handle temperature data
     temp_csv['date'] = pd.to_datetime(temp_csv['date']).dt.date
     # Saturday and Sunday are 5 and 6, Monday is 0. <5 is weekday
     temp_csv['weekday'] = temp_csv['date'].apply(lambda x: x.weekday())#<5)
     temp_csv['temp_c'] = temp_csv['temperature']
     temp_csv.drop('temperature',axis = 1,inplace=True)
 
+    # Handle small fleet size
+    scaling_factor = np.ones(len(scenario_csv))
+    for scenario, row in scenario_csv.iterrows():
+        if row['fleet_size'] < 30000:
+            scenario_csv.loc[scenario, 'fleet_size'] = 10000
+            scaling_factor[scenario] = row['fleet_size']/10000
+            logging.warning(f"Scenario {scenario}: Fleet size of {county} is too small: {row['fleet_size']}.")
+            logging.warning(f"Set fleet size to 10000 and scale the results by {scaling_factor[scenario]}.")
+
     # Run the model
     logging.info(f'Running with API key: {api_key}')
     final_result = temp_run(scenario_csv, temp_csv, api_key, county=county)
+
+    # Scale the results
+    for scenario, row in scenario_csv.iterrows():
+        if scaling_factor[scenario] != 1:
+            final_result[scenario][['home_l1','home_l2','work_l1','work_l2','public_l2','public_l3']] = \
+                final_result[scenario][['home_l1','home_l2','work_l1','work_l2','public_l2','public_l3']]*scaling_factor[scenario]
     
     return final_result
 
@@ -159,14 +175,14 @@ if __name__ == '__main__':
                     'fleet_size': [fleet_size]*2,
                     'mean_dvmt': [35]*2,
                     'temp_c': [temp_c]*2,
-                    'pev_type': ['PHEV20', 'PHEV50'],
+                    'pev_type': ['PHEV50']*2,
                     'pev_dist': ['EQUAL']*2,
                     'class_dist': ['Equal']*2,
                     'home_access_dist': ['HA75']*2,
                     'home_power_dist': ['MostL1']*2,
                     'work_power_dist': ['MostL2']*2,
                     'pref_dist': ['Home60']*2,
-                    'res_charging': ['min_delay']*2,
+                    'res_charging': ['min_delay', 'max_delay'],
                     'work_charging': ['min_delay']*2,
                 }
                 scenario_csv = pd.DataFrame(scenario_dict)
