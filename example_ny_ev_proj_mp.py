@@ -146,7 +146,7 @@ if __name__ == '__main__':
 
     # Loop through the months
     # NOTE: This is only for reducing computational cost.
-    for m in range(1, 13):
+    for m in range(3, 13):
         temp_df_daily_m = temp_df_daily[temp_df_daily.index.month == m]
 
         # %% Run the model
@@ -187,7 +187,7 @@ if __name__ == '__main__':
                 }
                 scenario_csv = pd.DataFrame(scenario_dict)
                 # Save scenario data to CSV
-                scenario_csv.to_csv(os.path.join(output_dir, f'{county}_scenarios.csv'.replace(' ','_')))
+                scenario_csv.to_csv(os.path.join(output_dir, f'{county}_month{m}_scenarios.csv'.replace(' ','_')))
                 scenario_csv_list.append(scenario_csv)
 
         # Set up a thread pool with 10 threads
