@@ -118,7 +118,7 @@ def temp_run(scenario_csv,temp_csv,api_key,smoothing=1, **kwargs):
                                 result.loc[str(temp_row.date)+" 0:00:00":str(temp_row.date)+" 0:45:00",charge_type] = slope_array[4:]
                     except ArithmeticError:
                         logging.warning("slope_inc: "+str(slope_inc))
-#                    
+                    
             output_df = output_df.append(result) 
         output_dict[scenario_id] = output_df
         
@@ -170,10 +170,12 @@ def API_run(df_row, api_key, smoothing, **kwargs):
         raw_json['results']
     except KeyError:
         if 'error' in raw_json:
+            print(raw_json['error'])
             logging.error("ERROR:"+raw_json['error']['code']+"\n")
             raise
         elif 'errors' in raw_json:
-            logging.error("ERROR:"+raw_json['errors']+"\n")
+            print(raw_json['errors'])
+            logging.error("ERROR:"+raw_json['errors'][0]+"\n")
             raise
     
     #if day is a weekday, return the weekday load profile for the day, otherwise return weekend
