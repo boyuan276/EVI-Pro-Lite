@@ -146,7 +146,7 @@ if __name__ == '__main__':
 
     # Loop through the months
     # NOTE: This is only for reducing computational cost.
-    for m in range(3, 13):
+    for m in range(5, 6):
         temp_df_daily_m = temp_df_daily[temp_df_daily.index.month == m]
 
         # %% Run the model

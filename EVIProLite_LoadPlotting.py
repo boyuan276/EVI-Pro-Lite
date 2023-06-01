@@ -15,7 +15,7 @@ requests.packages.urllib3.disable_warnings(InsecureRequestWarning)
 from datetime import datetime,timedelta
 import os
 import logging
-import retrying
+from retrying import retry
 
 #Input values
 param_dict = {
@@ -177,7 +177,9 @@ def API_run(df_row, api_key, smoothing, **kwargs):
         raw_json['results']
     except KeyError:
         if 'error' in raw_json:
-            logging.error("ERROR:"+raw_json['error']['code']+"\n")
+            logging.error("ERROR:"+raw_json['error']['code'])
+            if "API" in raw_json['error']['code']:
+                logging.error(f"API key: {api_key}\n")
             raise
         elif 'errors' in raw_json:
             logging.error("ERROR:"+raw_json['errors'][0]+"\n")
