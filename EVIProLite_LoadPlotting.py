@@ -169,8 +169,12 @@ def API_run(df_row, api_key, smoothing, **kwargs):
     try:
         raw_json['results']
     except KeyError:
-        logging.error("ERROR:"+raw_json['error']['code']+"\n")
-        raise
+        if 'error' in raw_json:
+            logging.error("ERROR:"+raw_json['error']['code']+"\n")
+            raise
+        elif 'errors' in raw_json:
+            logging.error("ERROR:"+raw_json['errors']+"\n")
+            raise
     
     #if day is a weekday, return the weekday load profile for the day, otherwise return weekend
     try:
