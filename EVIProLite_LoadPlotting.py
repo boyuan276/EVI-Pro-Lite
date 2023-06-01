@@ -15,6 +15,7 @@ requests.packages.urllib3.disable_warnings(InsecureRequestWarning)
 from datetime import datetime,timedelta
 import os
 import logging
+import retrying
 
 #Input values
 param_dict = {
@@ -163,18 +164,22 @@ def API_run(df_row, api_key, smoothing, **kwargs):
     url = base_url+"""fleet_size=%s&mean_dvmt=%s&temp_c=%s&pev_type=%s&pev_dist=%s&class_dist=%s&home_access_dist=%s&home_power_dist=%s&work_power_dist=%s&pref_dist=%s&res_charging=%s&work_charging=%s""" \
         %(fleet_size,mean_dvmt,temp_c,pev_type,pev_dist,class_dist,home_access_dist,home_power_dist,work_power_dist,pref_dist,res_charging,work_charging)
     url=url.replace("\\", "")
-    record_str = requests.get(url).text
+
+    try:
+        record_str = make_request(url).text
+    except Exception as e:
+        logging.error(f"Failed to make request: {str(e)}")
+        raise
+    
     record_str = record_str.replace("'", "\"")
     raw_json=json.loads(record_str)
     try:
         raw_json['results']
     except KeyError:
         if 'error' in raw_json:
-            print(raw_json['error'])
             logging.error("ERROR:"+raw_json['error']['code']+"\n")
             raise
         elif 'errors' in raw_json:
-            print(raw_json['errors'])
             logging.error("ERROR:"+raw_json['errors'][0]+"\n")
             raise
     
@@ -192,6 +197,15 @@ def API_run(df_row, api_key, smoothing, **kwargs):
         result = pd.DataFrame(raw_json['results'])
     return result
 
+@retry(stop_max_attempt_number=3, wait_fixed=2000)  # Retry 3 times with a 2-second delay between retries
+def make_request(url):
+    response = requests.get(url)
+    if response.status_code >= 500:
+        raise Exception(f"Received {response.status_code} server error")
+    elif response.status_code >= 400:
+        raise Exception(f"Received {response.status_code} client error")
+    # Add more conditions for specific error codes if needed
+    return response
 
 #Return nearest value in array to single input value
 def find_nearest(array, value):
