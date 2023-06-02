@@ -199,12 +199,12 @@ def API_run(df_row, api_key, smoothing, **kwargs):
         result = pd.DataFrame(raw_json['results'])
     return result
 
-@retry(stop_max_attempt_number=3, wait_fixed=2000)  # Retry 3 times with a 2-second delay between retries
+@retry(stop_max_attempt_number=5, wait_fixed=2000)  # Retry 5 times with a 2-second delay between retries
 def make_request(url):
     response = requests.get(url)
     if response.status_code >= 500:
         raise Exception(f"Received {response.status_code} server error")
-    elif response.status_code >= 400:
+    elif response.status_code >= 400 and response.status_code != 429:
         raise Exception(f"Received {response.status_code} client error")
     # Add more conditions for specific error codes if needed
     return response
