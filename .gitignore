@@ -1,5 +1,7 @@
 # User-specific stuff
 OutputData/
+InputData/
+.idea/
 logs.*
 errors.*
 NYSERDA_Data/
