@@ -48,8 +48,10 @@ def county_run(temp_csv, scenario_csv, api_key, county):
         if row['fleet_size'] < 30000:
             scenario_csv.loc[scenario, 'fleet_size'] = 10000
             scaling_factor[scenario] = row['fleet_size'] / 10000
-            logging.warning(f"Scenario {scenario}: Fleet size of {county} is too small: {row['fleet_size']}.")
-            logging.warning(f"Set fleet size to 10000 and scale the results by {scaling_factor[scenario]}.")
+            logging.warning(
+                f"Scenario {scenario}: Fleet size of {county} is too small: {row['fleet_size']}.")
+            logging.warning(
+                f"Set fleet size to 10000 and scale the results by {scaling_factor[scenario]}.")
 
     # Run the model
     logging.debug(f'Running with API key: {api_key}')
@@ -65,6 +67,33 @@ def county_run(temp_csv, scenario_csv, api_key, county):
     return final_result
 
 
+def population_density_2_dvmt(population_density):
+
+    p2d = {'99': 35, '499': 25, '999': 25, '1999': 25,
+           '3999': 25, '9999': 25, '24999': 25, '99999': 25}
+
+    if population_density <= 99:
+        mean_dvmt = p2d['99']
+    elif population_density >= 100 and population_density <= 499:
+        mean_dvmt = p2d['499']
+    elif population_density >= 500 and population_density <= 999:
+        mean_dvmt = p2d['999']
+    elif population_density >= 1000 and population_density <= 1999:
+        mean_dvmt = p2d['1999']
+    elif population_density >= 2000 and population_density <= 3999:
+        mean_dvmt = p2d['3999']
+    elif population_density >= 4000 and population_density <= 9999:
+        mean_dvmt = p2d['9999']
+    elif population_density >= 10000 and population_density <= 24999:
+        mean_dvmt = p2d['24999']
+    elif population_density >= 25000 and population_density <= 99999:
+        mean_dvmt = p2d['99999']
+    else:
+        mean_dvmt = 10
+
+    return mean_dvmt
+
+
 if __name__ == '__main__':
     # %% Set up logging
 
@@ -77,12 +106,18 @@ if __name__ == '__main__':
 
     cwd = os.getcwd()
     input_dir = os.path.join(cwd, 'InputData')
+    scenario_dir = os.path.join(input_dir, 'Scenario')
     output_dir = os.path.join(cwd, 'OutputData')
     fig_dir = os.path.join(cwd, 'Figures')
     if not os.path.exists(input_dir):
-        logging.critical('Input directory does not exist: {}'.format(input_dir))
+        logging.critical(
+            'Input directory does not exist: {}'.format(input_dir))
         sys.exit()
 
+    if not os.path.exists(scenario_dir):
+        os.makedirs(scenario_dir)
+        logging.info('Created directory: {}'.format(scenario_dir))
+    
     if not os.path.exists(output_dir):
         os.makedirs(output_dir)
         logging.info('Created directory: {}'.format(output_dir))
@@ -114,7 +149,8 @@ if __name__ == '__main__':
         if n_api_key > 0:
             logging.info(f'{n_api_key} API keys found in file.')
         else:
-            logging.warning('No valid API key found in file. Please enter your API key below.')
+            logging.warning(
+                'No valid API key found in file. Please enter your API key below.')
             api_key = input('Enter API key: ')
             # Check if API key is valid
             if len(api_key) != 40:
@@ -124,7 +160,8 @@ if __name__ == '__main__':
                 api_key_list.append(api_key)
                 n_api_key = 1
     else:
-        logging.warning('API key not found in file. Please enter your API key below.')
+        logging.warning(
+            'API key not found in file. Please enter your API key below.')
         api_key = input('Enter API key: ')
         # Check if API key is valid
         if len(api_key) != 40:
@@ -136,16 +173,28 @@ if __name__ == '__main__':
 
     # %% Read vehicle count data
 
-    vehicle_by_county_proj = pd.read_csv(os.path.join(input_dir, 'vehicle_by_county_proj.csv'),
+    scenario = 'AP_Recommendations'
+    vehicle_by_county_proj = pd.read_csv(os.path.join(input_dir, f'EV_count_by_county_{scenario}.csv'),
                                          index_col=0)
 
-    # Use year 2035 as an example
-    year = 2035
+    # Vehicle county by county data from 2020 to 2050
+    # The data source is NYSERDA Climate Action Scoping Plan
+    # This only include light-duty vehicles
+    # NOTE: Use year 2030 as an example
+    year = 2030
     vehicle_by_county_proj_year = vehicle_by_county_proj[str(year)]
     logging.info('Vehicle count data for year {}:'.format(year))
 
     # Rank counties in alphabetical order
     vehicle_by_county_proj_year = vehicle_by_county_proj_year.sort_index()
+
+    # %% Read population density data
+
+    pop_dens_county = pd.read_csv(os.path.join(
+        input_dir, 'NY_Population_Density.csv'))
+    pop_dens_county['Population_density'] = pop_dens_county['Population_density'].str.replace(
+        ',', '').astype(float)
+    pop_dens_county['County'] = pop_dens_county['County'] + ' County'
 
     # %% Read temperature data
 
@@ -163,8 +212,9 @@ if __name__ == '__main__':
 
     # Loop through the months
     # NOTE: This is only for reducing computational cost.
-    for m in range(12, 13):
-        temp_df_daily_m = temp_df_daily[temp_df_daily.index.month == m]
+    months = range(1, 13)
+    for m in months:
+        temp_df_daily_m = temp_df_daily[temp_df_daily.index.month == m] # type: ignore
 
         # %% Run the model
 
@@ -185,28 +235,33 @@ if __name__ == '__main__':
             fleet_size = vehicle_by_county_proj_year[county]
             temp_c = temp_csv['temperature'].mean()
 
+            pop_dens = pop_dens_county[pop_dens_county['County']
+                                       == county]['Population_density'].values[0]
+            mean_dvmt = population_density_2_dvmt(pop_dens)
+
             # Example scenario: two PHEV types
             # User can change the scenario data here
             scenario_dict = {
                 'fleet_size': [fleet_size] * 2,
-                'mean_dvmt': [35] * 2,
+                'mean_dvmt': [mean_dvmt] * 2,
                 'temp_c': [temp_c] * 2,
                 'pev_type': ['PHEV50'] * 2,
                 'pev_dist': ['EQUAL'] * 2,
                 'class_dist': ['Equal'] * 2,
-                'home_access_dist': ['HA75'] * 2,
-                'home_power_dist': ['MostL1'] * 2,
+                'home_access_dist': ['HA100'] * 2,
+                'home_power_dist': ['Equal'] * 2,
                 'work_power_dist': ['MostL2'] * 2,
-                'pref_dist': ['Home60'] * 2,
+                'pref_dist': ['Home100'] * 2,
                 'res_charging': ['min_delay', 'max_delay'],
                 'work_charging': ['min_delay'] * 2,
             }
             scenario_csv = pd.DataFrame(scenario_dict)
             # Save scenario data to CSV
-            scenario_csv.to_csv(os.path.join(output_dir, f'{county}_month{m}_scenarios.csv'.replace(' ', '_')))
+            scenario_csv.to_csv(os.path.join(
+                scenario_dir, f'{county}_month{m}_scenarios.csv'.replace(' ', '_')))
             scenario_csv_list.append(scenario_csv)
 
-        # Set up a thread pool with 10 threads
+        # %% Set up a thread pool with 10 threads
         with ThreadPoolExecutor(max_workers=10) as executor:
 
             futures = list()
